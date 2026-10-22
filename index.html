@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#8B4513"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<title>Café 11:11</title><link rel="manifest" href="manifest.json"><link rel="icon" id="ic">
+<style>html,body{margin:0;height:100%;background:#FDE0E6;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none}#g{position:fixed;inset:0}</style>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script></head>
+<body><div id="g"></div><script>
+'use strict';
+// ================= AJUSTES FÁCILES =================
+const MODO_PRUEBA=false; // true = todo crece 20 veces más rápido (para probar)
+const K='cafe1111_save_v1';
+const C={rosa:0xFDE0E6,mant:0xFFFDD0,bl:0xFFFFFF,mar:0x8B4513,azul:0x89CFF0};
+// === TIEMPOS DE CRECIMIENTO (s = segundos). t: i=ingrediente, d=decorativa, a=1 el árbol rebrota tras cosechar ===
+const CULT={
+cafe:{n:'Café',t:'i',s:90,c:0x5a2d0c},cana:{n:'Caña',t:'i',s:75,c:0xa8d06a},cacao:{n:'Cacao',t:'i',s:105,c:0x7b3f00},
+fresa:{n:'Fresa',t:'i',s:60,c:0xe8344e},mango:{n:'Mango',t:'i',s:150,c:0xffb52e,a:1},limon:{n:'Limón',t:'i',s:120,c:0x7ac143,a:1},
+orquidea:{n:'Orquídea',t:'d',s:30,c:0xc77dff},mayo:{n:'Flor de mayo',t:'d',s:40,c:0xff8fab},azucena:{n:'Azucena',t:'d',s:20,c:0xffffff},sauce:{n:'Sauce llorón',t:'d',s:50,c:0x8fbc5a,a:1}};
+const NOM={leche:'Leche',agua:'Agua',empaque:'Empaque',gomita:'Gomitas enchiladas',picafresa:'Pica fresas',mazapan:'Mazapán',reeses:'Reese’s',kinder:'Kinder Bueno',huevito:'Huevito Kinder',kitkat:'Kit Kat',lampara:'Lámpara'};
+for(const k in CULT)NOM[k]=CULT[k].n;
+const ICOL={leche:0xffffff,agua:0x89CFF0,empaque:0xd8b98a,gomita:0xe63946,picafresa:0xff4d6d,mazapan:0xe8c07a,reeses:0xe07a1f,kinder:0xf4e1c1,huevito:0xffd166,kitkat:0xc1121f};
+const ING=Object.keys(ICOL).concat(['cafe','cana','cacao','fresa','mango','limon']),DEC=['orquidea','mayo','azucena','sauce','lampara'];
+// === RECETAS: [nombre,[ingredientes]] (cada una mezcla ilimitados + cultivados) ===
+const REC=[['Latte de fresa',['fresa','leche']],['Café con mazapán',['cafe','mazapan','leche']],['Chocolate Kinder caliente',['cacao','leche','kinder']],['Limonada con pica fresas',['limon','agua','picafresa']],['Mango enchilado',['mango','gomita','empaque']],['Frappé Kit Kat',['cafe','leche','kitkat']],['Mocha Reese’s',['cafe','cacao','reeses']],['Café dulce',['cafe','cana','leche']],['Limonada de mango',['limon','mango','agua']],['Fresas con cacao',['fresa','cacao','huevito']]];
+// === EVENTOS (6 tipos, 3 clientes cada uno). luz:1 = zona a media luz; dim:1 = baja la luz ===
+const ESC=[
+{luz:1,dim:1,g:'●',col:[0x89CFF0,0xffffff],l:['{n}: {p}, tenemos que hablar con el corazón en la mano.','{p}: Ya lo sentía… el café se nos enfrió hace meses.','{n}: Gracias por todo. Merecemos algo que no duela.','{p} se queda mirando la luz de la lámpara.']},
+{luz:1,g:'✿',col:[0xff8fab,0xFDE0E6,0xffffff],l:['{n} te susurra: «Hoy le pregunto, ayúdame».','{p} llega y las lámparas se encienden en silencio.','{n}: ¿Quieres pasar todos mis cafés contigo?','{p}: ¡Sí, mil veces sí! Todos aplauden.']},
+{luz:0,g:'♥',col:[0xff6b81,0xff8fab],l:['{n} y {p} alcanzan la misma taza al mismo tiempo.','{p}: Perdón… tú primero.','{n}: ¿Te invito un café? Digo… otro café.','Se sonríen: algo empieza hoy, a las 11:11.']},
+{luz:0,g:'★',col:[0xffd54f,0xfff59d],l:['{n}: ¿{p}? ¿De verdad eres tú, después de tantos años?','{p}: Pedías lo mismo… ¡no has cambiado nada!','{n}: Tenemos veinte años de cosas que contarnos.','Se abrazan y el sol baña la mesa.']},
+{luz:0,g:'●',col:[0xff6b81,0x89CFF0,0xffd54f,0x9ccc65],l:['{p} entra con los ojos tapados por {n}.','{n}: ¡Sorpresa! Feliz cumpleaños, {p}.','{p}: ¿Hiciste todo esto para mí? Me vas a hacer llorar.','Cae confeti y la cafetería canta.']},
+{luz:1,dim:1,g:'♥',col:[0xffffff,0x89CFF0],l:['{n}: {p}, me equivoqué. Perdóname.','{p}: Yo también callé lo que dolía.','{n}: Empecemos de nuevo, con calma.','Se toman de las manos; la lluvia ya paró.']}];
+// === 18 CLIENTES: [nombre, pareja, POEMA (versos separados por /)] — edita los poemas aquí. Evento = según su fila (3 por tipo) ===
+const CL=[
+['Camila','Diego','Se enfrió el café sin hablarnos,/pero guardo tu risa en mi taza./Te suelto como carta vieja:/con cuidado, sin rencor.'],
+['Andrés','Lucía','Fuimos lámpara en cuarto cerrado./Hoy se apaga y no la maldigo:/amar es abrir la puerta/y dejar que el otro vuele.'],
+['Valeria','Bruno','Llovió en mí lo que no dije./Hoy escribo que te quise, y fue cierto./Ojalá la vida nos devuelva/más ligeros y sin ancla.'],
+['Sofía','Emilio','Contigo el tiempo se queda a cenar./Hoy te ofrezco un anillo/y una vida con tardes de lluvia/y de sol, siempre a tu lado.'],
+['Julián','Marta','No prometo cielos sin nubes, sino un paraguas;/no la luna, sino mi mano a las 11:11./Pídeme quedarme y me quedo,/como la luz en una lámpara.'],
+['Ximena','Tomás','Sembraste en mí una flor sin nombre/y hoy florece en forma de «sí»./Que nuestra casa huela a pan y jazmín/y amar sea la costumbre más bella.'],
+['Pablo','Irene','Alcanzamos la misma taza y el destino sonrió./Tu nombre me supo a azúcar tibia./No sé qué somos, pero huele a comienzo,/a tarde de domingo con ganas de quedarse.'],
+['Daniela','Hugo','Me temblaron más las manos que la cuchara./Hay miradas que son puertas entreabiertas./Si me invitas otra vez, diré que sí:/contigo hasta el silencio suena a canción.'],
+['Iván','Paola','Cabe un universo en una mesa pequeña/si tú lo sirves./Que este primer café sea la primera página/de un libro que no quiero terminar.'],
+['Rosa','Ernesto','Los años pasaron como hojas de un álbum,/y en la foto amarilla seguías sonriendo./Hoy el tiempo se dobla y nos abraza:/lo que se quiere de verdad regresa.'],
+['Leo','Alma','Verte es abrir una caja de música/guardada bajo llave en el alma./Suena igual que entonces, pero serena,/como suenan los recuerdos que ya no duelen.'],
+['Fer','Nora','Hubo calles y noches sin respuesta,/pero el camino da vueltas como la cuchara./Aquí estamos, con canas o cicatrices,/y la amistad intacta como un sol de las once.'],
+['Abril','Santi','Hoy el calendario se vistió de fiesta/y las velitas guardan deseos./Que cada año sea una flor nueva en tu jardín/y yo cerca para verla abrir.'],
+['Memo','Clara','Cumplir años es sumar mañanas contigo./Sopla las velas: el humo lleva mi gratitud./Eres la risa que llega sin avisar,/el mejor regalo que me da el tiempo.'],
+['Regina','Axel','Confeti de colores sobre un café tibio:/así quiero recordar este día./Que te abracen las luces y las voces/y nunca falte quien cante tu nombre.'],
+['Ángel','Mía','Dije adiós una noche y me equivoqué de puerta./Vuelvo con las manos abiertas./Perdón es la palabra más pequeña/que cabe en la taza más grande.'],
+['Elena','Rafa','Callamos lo que dolía y se hizo invierno,/pero bajo la nieve duerme una semilla./Que la lluvia de ayer riegue esta tregua/y hablemos con el corazón.'],
+['Octavio','Dalia','Hay heridas que cierran con un café caliente/y una verdad dicha sin armaduras./Te elijo de nuevo, con calma,/como se elige un hogar tras la tormenta.']
+].map((a,i)=>[a[0],i%10,i/3|0,a[1],a[2]]);
+const FIN='Para Natalia\n\nGracias por visitar el Café 11:11,\ndonde cada taza guarda un deseo.\nQue estas cartas te recuerden\nque el amor también se cultiva:\nse riega con paciencia\ny florece a su propia hora.\n\n(toca para seguir jugando)';
+// ================= ESTADO Y GUARDADO =================
+let S={inv:{lampara:3},pl:Array(12).fill(null),deco:{},cartas:[],hecho:[]};
+try{const o=JSON.parse(localStorage.getItem(K));if(o)S=Object.assign(S,o)}catch(e){}
+const sv=()=>{try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}};
+// ================= UTILIDADES =================
+const T=(s,x,y,t,sz,col,o)=>s.add.text(x,y,t,Object.assign({fontFamily:'Georgia,serif',fontSize:sz+'px',color:col||'#8B4513',resolution:2},o||{})).setOrigin(.5);
+function btn(s,x,y,w,h,t,cb,col,sz){const r=s.add.rectangle(x,y,w,h,col||C.bl).setStrokeStyle(3,C.mar).setInteractive({useHandCursor:true}),l=T(s,x,y,t,sz||22,'#8B4513',{align:'center',fontStyle:'bold',wordWrap:{width:w-10}});r.on('pointerup',p=>{if(p.getDistance()<14)cb()});return [r,l]}
+const msg=(s,t)=>{s.tweens.killTweensOf(s.ms);s.ms.setText(t).setAlpha(1);s.tweens.add({targets:s.ms,alpha:0,delay:1800,duration:500})};
+const go=(s,n)=>{s.cameras.main.fadeOut(250,253,224,230);s.cameras.main.once('camerafadeoutcomplete',()=>s.scene.start(n))};
+const idle=(s,g)=>s.tweens.add({targets:g,scaleY:{from:1,to:1.03},yoyo:true,repeat:-1,duration:900});
+function ir(s,g,x,y,cb){s.tweens.killTweensOf(g);const sx=x<g.x?-1:1;g.setScale(sx,1);
+s.tweens.add({targets:g,scaleY:{from:.95,to:1.04},yoyo:true,repeat:-1,duration:170});
+s.tweens.add({targets:g,x:x,y:y,duration:Phaser.Math.Distance.Between(g.x,g.y,x,y)*2.2+100,onComplete:()=>{s.tweens.killTweensOf(g);g.setScale(sx,1);idle(s,g);if(cb)cb()}})}
+function lluvia(s,gl,cols,n){for(let i=0;i<n;i++){const c=Phaser.Utils.Array.GetRandom(cols),t=T(s,Phaser.Math.Between(20,700),-30,gl,Phaser.Math.Between(26,44),'#'+c.toString(16).padStart(6,'0')).setDepth(50);s.tweens.add({targets:t,y:1000,angle:Phaser.Math.Between(-90,90),duration:Phaser.Math.Between(2500,4200),delay:i*100,onComplete:()=>t.destroy()})}}
+// ================= PERSONAJES DIBUJADOS CON CÓDIGO =================
+// La protagonista: baja (h:118), cabello rizado (14 círculos), ropa rosa
+const PJ={piel:0xf1c9a5,pelo:0x3b2417,e:0,ropa:0xf48fb1,falda:1,apron:1,acc:5,h:118};
+const PIEL=[0xf6d3b3,0xe0ac82,0xc68642,0x8d5524,0xf1c27d],PELO=[0x2b1b12,0x6b3e1f,0xb5651d,0x1c1c1c,0xd8b46a,0x9a9a9a],ROPA=[0x89CFF0,0xFFFDD0,0xff9aa2,0xffffff,0xb39ddb,0x9ccc65,0xffcc80];
+const look=i=>({piel:PIEL[i%5],pelo:PELO[(i*2+1)%6],e:i%4,ropa:ROPA[(i*3)%7],h:140+(i*7)%40,acc:i%6});
+function pers(s,x,y,o){const g=s.add.graphics({x,y}),h=o.h,hy=-h+32,bt=-h+62,f=(c,a)=>g.fillStyle(c,a===undefined?1:a);
+f(o.pelo);if(o.e==0)for(let i=0;i<14;i++){const a=i/14*6.283;g.fillCircle(Math.cos(a)*29,hy+Math.sin(a)*27,14)}else if(o.e==1)g.fillRoundedRect(-33,hy-30,66,92,22);
+f(0x5a3d2b).fillRoundedRect(-17,-30,14,30,4).fillRoundedRect(3,-30,14,30,4);
+f(o.ropa).fillRoundedRect(-26,bt,52,-bt-24,14);
+if(o.falda)g.fillTriangle(-38,-24,38,-24,0,bt+14);
+if(o.apron)f(0xffffff).fillRoundedRect(-16,bt+18,32,-bt-48,6);
+f(o.piel).fillCircle(-31,bt+36,8).fillCircle(31,bt+36,8).fillRect(-6,hy+24,12,16).fillCircle(0,hy,28);
+f(o.pelo);if(o.e==0){for(let i=0;i<6;i++)g.fillCircle(-26+i*10.4,hy-22+Math.abs(i-2.5)*3,12)}else{g.fillEllipse(0,hy-17,60,28);if(o.e==3)g.fillCircle(0,hy-40,12)}
+f(0x3a2a20).fillCircle(-10,hy+2,3.5).fillCircle(10,hy+2,3.5);f(0xff8fa3,.5).fillCircle(-17,hy+10,5).fillCircle(17,hy+10,5);
+g.lineStyle(3,0x8b3a3a).beginPath().arc(0,hy+8,9,.3,2.84).strokePath();
+const a=o.acc;
+if(a==0)g.lineStyle(3,0x333333).strokeCircle(-10,hy+2,8).strokeCircle(10,hy+2,8).lineBetween(-2,hy+2,2,hy+2);
+if(a==1)f(0xd9b38c).fillEllipse(0,hy-24,84,14).fillRoundedRect(-22,hy-48,44,26,6);
+if(a==2)f(0x89CFF0).fillRoundedRect(-22,bt-4,44,12,6);
+if(a==3)f(0x8B4513).fillRoundedRect(20,bt+40,22,20,4);
+if(a==4)f(0xe63946).fillEllipse(0,hy-22,58,22).fillRect(-4,hy-18,44,6);
+return g}
+// ================= JARDÍN =================
+const fase=q=>(Date.now()-q.t)/1000*(MODO_PRUEBA?20:1)/CULT[q.k].s;
+const fmt=t=>Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0');
+function dib(g,k,ph){if(ph==0){g.fillStyle(0x5a3a1a).fillCircle(0,10,6);return}const hg=ph==1?30:ph==2?60:80;
+if(ph==3)g.fillStyle(0xffffaa,.45).fillCircle(0,-25,48);
+g.lineStyle(6,0x4f9d3a).lineBetween(0,20,0,20-hg);g.fillStyle(0x6cbf4b).fillEllipse(-14,20-hg*.6,22,12).fillEllipse(14,20-hg*.8,22,12);
+if(ph==3){g.fillStyle(CULT[k].c);[[0,14,16],[-20,30,13],[20,30,13]].forEach(a=>g.fillCircle(a[0],-hg+a[1],a[2]))}}
+class Jardin extends Phaser.Scene{
+constructor(){super('Jardin')}
+create(){const s=this;s.cameras.main.fadeIn(250,253,224,230);s.sel=null;
+s.add.rectangle(360,640,720,1280,C.azul);
+const g=s.add.graphics();g.fillStyle(0xffffff,.9);[[110,150,50],[170,140,40],[560,200,55],[620,190,40],[400,110,45]].forEach(a=>g.fillCircle(a[0],a[1],a[2]));
+g.fillStyle(0x9ad69a).fillRect(0,250,720,710);g.fillStyle(C.bl).fillRect(0,262,720,10);for(let x=14;x<720;x+=50)g.fillRect(x,240,16,50);
+s.p=[];s.tt=[];
+for(let i=0;i<12;i++){const x=160+200*(i%3),y=360+150*(i/3|0);
+const r=s.add.rectangle(x,y,150,110,0x8b5a2b).setStrokeStyle(4,C.mar).setInteractive();
+s.p.push(s.add.graphics({x,y}));s.tt.push(T(s,x,y+40,'',18,'#ffffff',{stroke:'#8B4513',strokeThickness:3}));
+r.on('pointerup',p=>{if(p.getDistance()<14)s.toca(i,x,y)})}
+s.pj=pers(s,360,915,PJ).setDepth(20);idle(s,s.pj);
+s.add.rectangle(360,1120,720,320,C.mant).setStrokeStyle(4,C.mar);
+s.inv=T(s,360,68,'',22,'#8B4513',{wordWrap:{width:680},align:'center'});
+s.ms=T(s,360,190,'',26,'#8B4513',{backgroundColor:'#FFFDD0',padding:{x:12,y:6}}).setAlpha(0).setDepth(70);
+T(s,360,985,'Toca una parcela vacía y elige una semilla',22);
+Object.keys(CULT).forEach((k,i)=>{const c=CULT[k];btn(s,76+142*(i%5),1050+80*(i/5|0),134,68,c.n+'\n'+fmt(c.s),()=>s.siembra(k),c.t=='i'?C.bl:C.rosa,17)});
+btn(s,360,1230,300,64,'Ir a la Cafetería',()=>go(s,'Cafe'),C.azul);
+s.input.on('pointerup',(p,o)=>{if(!o.length&&p.getDistance()<14&&p.y>260&&p.y<950)ir(s,s.pj,p.x,p.y,0)});
+s.time.addEvent({delay:1000,loop:true,callback:()=>s.refresh()});s.refresh();msg(s,'Toca una parcela para empezar')}
+toca(i,x,y){const s=this;ir(s,s.pj,x,y+80,()=>{const q=S.pl[i];if(!q){s.sel=i;msg(s,'Elige qué sembrar')}else if(fase(q)>=1)s.cosecha(i);else msg(s,'Aún está creciendo…')})}
+siembra(k){const s=this;if(s.sel===null||S.pl[s.sel])return msg(s,'Toca primero una parcela vacía');S.pl[s.sel]={k,t:Date.now()};s.sel=null;sv();s.refresh();msg(s,'Sembraste '+NOM[k])}
+cosecha(i){const q=S.pl[i],c=CULT[q.k];S.inv[q.k]=(S.inv[q.k]||0)+(c.t=='i'?2:1);if(c.a)q.t=Date.now();else S.pl[i]=null;sv();this.refresh();msg(this,'+ '+c.n)}
+refresh(){const s=this;S.pl.forEach((q,i)=>{const g=s.p[i].clear(),t=s.tt[i];if(!q){t.setText('');return}const f=fase(q),ph=f<.15?0:f<.5?1:f<1?2:3;dib(g,q.k,ph);t.setText(ph==3?'¡Lista!':fmt((1-f)*CULT[q.k].s/(MODO_PRUEBA?20:1)))});
+const l=Object.keys(S.inv).filter(k=>S.inv[k]>0&&k!='lampara').map(k=>NOM[k]+' '+S.inv[k]).join(' · ');s.inv.setText(l||'Mochila vacía')}}
+// ================= CAFETERÍA =================
+const TB=[[150,620],[340,620],[560,620],[560,800]]; // mesas: 0-1 soleadas, 2-3 a media luz
+class Cafe extends Phaser.Scene{
+constructor(){super('Cafe')}
+create(){const s=this;s.cameras.main.fadeIn(250,253,224,230);s.cup=[];s.mode='p';s.st='';s.dlg=null;s.pa=null;s.gh=null;
+const g=s.add.graphics();g.fillStyle(C.rosa).fillRect(0,0,720,440);g.fillStyle(C.mant).fillRect(0,0,720,36);
+g.fillStyle(0xe8c99a).fillRect(0,440,720,840);g.lineStyle(2,0xcfa670);for(let y=480;y<900;y+=40)g.lineBetween(0,y,720,y);
+g.fillStyle(C.mar).fillRect(0,430,720,76);g.fillStyle(0xa0622d).fillRect(0,420,720,14);
+[[40,90],[250,90]].forEach(w=>{g.fillStyle(C.azul).fillRect(w[0],w[1],170,260).lineStyle(8,0xffffff).strokeRect(w[0],w[1],170,260).lineBetween(w[0]+85,w[1],w[0]+85,w[1]+260).lineBetween(w[0],w[1]+130,w[0]+170,w[1]+130)});
+// luz de sol de los ventanales
+const r=s.add.graphics().fillStyle(0xfffbd0,.35);r.fillPoints([{x:40,y:350},{x:210,y:350},{x:330,y:800},{x:150,y:800}],true);r.fillPoints([{x:250,y:350},{x:420,y:350},{x:520,y:800},{x:350,y:800}],true);
+s.tweens.add({targets:r,alpha:{from:.5,to:1},yoyo:true,repeat:-1,duration:2600});
+// zona a media luz (luz cálida) + lámpara vintage colgante
+s.add.rectangle(600,450,240,900,0xffa94d,.18);
+s.add.graphics().lineStyle(3,C.mar).lineBetween(600,0,600,110).fillStyle(0xffd27a,.35).fillCircle(600,150,95).fillStyle(0xb8860b).fillPoints([{x:578,y:150},{x:622,y:150},{x:636,y:118},{x:564,y:118}],true);
+const tg=s.add.graphics();TB.forEach(t=>{tg.fillStyle(0x7a4a22).fillRect(t[0]-8,t[1],16,60);tg.fillStyle(0xb5733a).fillEllipse(t[0],t[1],150,56);tg.fillStyle(0xd9a066).fillEllipse(t[0],t[1]-4,140,46)});
+s.dg=s.add.graphics().setDepth(5);
+s.pj=pers(s,110,600,PJ).setDepth(20);idle(s,s.pj);
+s.add.rectangle(360,1090,720,380,C.mant).setStrokeStyle(4,C.mar);
+s.ms=T(s,360,150,'',26,'#8B4513',{backgroundColor:'#FFFDD0',padding:{x:12,y:6}}).setAlpha(0).setDepth(70);
+s.bt=T(s,360,245,'',26,'#8B4513',{backgroundColor:'#ffffff',padding:{x:16,y:12},align:'center',wordWrap:{width:560}}).setDepth(60).setVisible(false);
+btn(s,110,60,200,70,'Jardín',()=>go(s,'Jardin'),C.azul);
+s.mb=btn(s,360,60,200,70,'Decorar',()=>{s.mode=s.mode=='p'?'d':'p';s.pP.setVisible(s.mode=='p');s.pD.setVisible(s.mode=='d');s.mb[1].setText(s.mode=='p'?'Decorar':'Preparar')},C.rosa);
+s.lb=btn(s,610,60,200,70,'',()=>s.cartas(),C.rosa);
+// panel Preparar
+s.pP=s.add.container(0,0);s.pD=s.add.container(0,0).setVisible(false);
+s.cg=s.add.graphics();s.ct=T(s,150,935,'',20,'#8B4513',{wordWrap:{width:200}}).setOrigin(0,.5);
+const a=btn(s,470,935,130,56,'Servir',()=>s.servir(),C.rosa),v=btn(s,620,935,130,56,'Vaciar',()=>{s.cup=[];s.taza()});
+s.pP.add([s.cg,s.ct,...a,...v]);s.ib={};
+ING.forEach((k,i)=>{const x=98+176*(i%4),y=1008+66*(i>>2),b=btn(s,x,y,168,58,NOM[k],()=>s.agrega(k),CULT[k]?C.mant:C.bl,17),d=s.add.circle(x-70,y,9,CULT[k]?CULT[k].c:ICOL[k]).setStrokeStyle(2,C.mar);b[1].setX(x+10).setWordWrapWidth(120);s.ib[k]=b;s.pP.add([b[0],b[1],d])});
+// panel Decorar (arrastra y suelta)
+s.pD.add(T(s,360,945,'Arrastra a una mesa · toca para retirar',22));s.dc={};
+DEC.forEach((k,j)=>{const x=90+135*j,c=k=='lampara'?0xffd27a:CULT[k].c,ic=s.add.circle(x,1050,34,c).setStrokeStyle(4,C.mar).setInteractive(),n=T(s,x,1112,'',22),nm=T(s,x,1150,NOM[k],17);s.dc[k]=n;
+ic.on('pointerdown',p=>{if(!(S.inv[k]>0))return msg(s,'No tienes '+NOM[k]);s.gh=s.add.circle(p.x,p.y,24,c).setStrokeStyle(3,C.mar).setDepth(80);s.gk=k});s.pD.add([ic,n,nm])});
+TB.forEach((t,i)=>[0,1].forEach(q=>{const id=i*2+q;s.add.circle(t[0]-34+68*q,t[1]-30,30,0xffffff,.001).setDepth(6).setInteractive().on('pointerup',p=>{if(s.mode=='d'&&S.deco[id]!==undefined&&p.getDistance()<14){const k=S.deco[id];S.inv[k]=(S.inv[k]||0)+1;delete S.deco[id];sv();s.pinta();s.upd()}})}));
+s.input.on('pointermove',p=>{if(s.gh)s.gh.setPosition(p.x,p.y)});
+s.input.on('pointerup',(p,o)=>{
+if(s.gh){let b=-1,bd=80;TB.forEach((t,i)=>[0,1].forEach(q=>{const id=i*2+q;if(S.deco[id]!==undefined)return;const d=Phaser.Math.Distance.Between(p.x,p.y,t[0]-34+68*q,t[1]-16);if(d<bd){bd=d;b=id}}));
+if(b>=0){S.deco[b]=s.gk;S.inv[s.gk]--;sv();s.pinta();s.upd()}s.gh.destroy();s.gh=null;return}
+if(s.dlg&&p.getDistance()<14){s.dlg();return}
+if(!o.length&&p.getDistance()<14&&p.y>470&&p.y<900)ir(s,s.pj,p.x,Math.min(p.y,880),0)});
+s.upd();s.pinta();s.taza();s.to('LLEGANDO')}
+pinta(){const g=this.dg.clear();TB.forEach((t,i)=>[0,1].forEach(q=>{const k=S.deco[i*2+q];if(!k)return;const x=t[0]-34+68*q,y=t[1]-16;
+if(k=='lampara'){g.fillStyle(0xffd27a,x>480?.4:.25).fillCircle(x,y-30,x>480?85:58);g.fillStyle(0xb8860b).fillRect(x-3,y-28,6,30);g.fillStyle(0xfff0c2).fillPoints([{x:x-12,y:y-58},{x:x+12,y:y-58},{x:x+22,y:y-28},{x:x-22,y:y-28}],true)}
+else{g.lineStyle(4,0x4f9d3a).lineBetween(x,y,x,y-28);g.fillStyle(CULT[k].c).fillCircle(x,y-36,13).fillStyle(0xffe066).fillCircle(x,y-36,4)}}))}
+upd(){const s=this;ING.forEach(k=>{if(CULT[k]){const n=S.inv[k]||0;s.ib[k][1].setText(NOM[k]+' ×'+n);s.ib[k][0].setFillStyle(n?C.mant:0xcccccc)}});DEC.forEach(k=>s.dc[k].setText('×'+(S.inv[k]||0)));s.lb[1].setText('✉ '+S.cartas.length+'/18')}
+taza(){const g=this.cg.clear(),p=[{x:40,y:915},{x:120,y:915},{x:108,y:975},{x:52,y:975}];g.fillStyle(C.bl).fillPoints(p,true);
+this.cup.forEach((k,j)=>g.fillStyle(CULT[k]?CULT[k].c:ICOL[k]).fillRect(54,964-j*12,52,11));g.lineStyle(3,C.mar).strokePoints(p,true);
+this.ct.setText(this.cup.length?this.cup.map(k=>NOM[k]).join(' + '):'Taza vacía')}
+agrega(k){const s=this;if(s.st!='ESPERANDO_PEDIDO')return msg(s,'Aún no hay pedido');if(s.cup.length>=4)return msg(s,'La taza está llena');
+if(CULT[k]&&(S.inv[k]||0)<=s.cup.filter(a=>a==k).length)return msg(s,'Falta en el jardín');s.cup.push(k);s.taza()}
+servir(){const s=this;if(s.st!='ESPERANDO_PEDIDO')return;const a=[...s.cup].sort().join(),b=[...REC[CL[s.ci][1]][1]].sort().join();
+if(a!=b){s.cup=[];s.taza();return msg(s,'Mmm, esto no es lo que pedí…')}
+s.cup.forEach(k=>{if(CULT[k])S.inv[k]--});s.cup=[];s.taza();sv();s.upd();s.to('SERVIDO')}
+hablar(t){this.bt.setText(t).setVisible(!!t)}
+// ---- MÁQUINA DE ESTADOS NARRATIVA: LLEGANDO → ESPERANDO_PEDIDO → SERVIDO → EVENTO → CARTA → SALIENDO ----
+to(st){const s=this;s.st=st;if(st=='LLEGANDO'){s.lib=S.hecho.length>=18;s.ci=s.lib?Phaser.Math.Between(0,17):S.hecho.length}
+const i=s.ci,c=CL[i],E=ESC[c[2]];
+if(st=='LLEGANDO'){s.cup=[];s.taza();s.cl=pers(s,-90,548,look(i)).setDepth(15);ir(s,s.cl,330,548,()=>s.to('ESPERANDO_PEDIDO'))}
+else if(st=='ESPERANDO_PEDIDO'){const r=REC[c[1]];s.hablar(c[0]+': Quisiera «'+r[0]+'»\n('+r[1].map(k=>NOM[k]).join(' + ')+')')}
+else if(st=='SERVIDO'){s.hablar(c[0]+': ¡Delicioso, gracias!');lluvia(s,'♥',[0xff8fab,0xe63946],8);s.time.delayedCall(1500,()=>s.to(s.lib?'SALIENDO':'EVENTO'))}
+else if(st=='EVENTO'){const t=TB[E.luz?Phaser.Math.Between(2,3):Phaser.Math.Between(0,1)];s.mt=t;s.hablar('');
+ir(s,s.cl,t[0]-85,t[1]+60,()=>{s.pa=pers(s,810,t[1]+60,look(i+11)).setDepth(15);ir(s,s.pa,t[0]+85,t[1]+60,()=>{
+if(E.dim){s.dm=s.add.rectangle(360,450,720,900,0x000000).setDepth(40).setAlpha(0);s.tweens.add({targets:s.dm,alpha:.35,duration:800})}
+lluvia(s,E.g,E.col,36);let k=0;s.dlg=()=>{if(k<E.l.length)s.hablar(E.l[k++].replace(/\{n\}/g,c[0]).replace(/\{p\}/g,c[3]));else{s.dlg=null;s.to('CARTA')}};s.dlg()})})}
+else if(st=='CARTA'){s.hablar('');if(s.dm){const d=s.dm;s.dm=null;s.tweens.add({targets:d,alpha:0,duration:600,onComplete:()=>d.destroy()})}
+const t=s.mt,e=s.add.graphics({x:t[0],y:t[1]-8}).setDepth(30);e.fillStyle(C.bl).fillRect(-32,-22,64,44).lineStyle(3,C.mar).strokeRect(-32,-22,64,44).fillStyle(0xf5a3b8).fillTriangle(-32,-22,32,-22,0,4);
+e.setInteractive(new Phaser.Geom.Rectangle(-34,-24,68,48),Phaser.Geom.Rectangle.Contains);s.tweens.add({targets:e,y:e.y-8,yoyo:true,repeat:-1,duration:700});msg(s,'Toca la carta ✉');
+e.once('pointerup',()=>{s.tweens.killTweensOf(e);e.destroy();S.hecho.push(i);S.cartas.push(i);sv();s.upd();msg(s,'Nueva carta de '+c[0]);s.to('SALIENDO')})}
+else if(st=='SALIENDO'){s.hablar('');[s.cl,s.pa].forEach(p=>{if(p)ir(s,p,830,p.y,()=>{s.tweens.killTweensOf(p);p.destroy()})});s.pa=null;
+s.time.delayedCall(2800,()=>{if(S.hecho.length>=18&&!S.fin){S.fin=1;sv();s.final()}else s.to('LLEGANDO')})}}
+final(){const s=this,b=s.add.rectangle(360,640,720,1280,C.mant,.96).setDepth(90).setInteractive(),t=T(s,360,620,FIN,30,'#8B4513',{align:'center',wordWrap:{width:600},lineSpacing:10}).setDepth(91);b.once('pointerup',()=>{b.destroy();t.destroy();s.to('LLEGANDO')})}
+cartas(){const s=this,o=s.add.container(0,0).setDepth(100);o.add([s.add.rectangle(360,640,720,1280,C.mant).setInteractive(),T(s,360,140,'Inventario de cartas',38)]);
+for(let i=0;i<18;i++){const x=90+108*(i%6),y=330+130*(i/6|0),ok=S.cartas.includes(i),e=s.add.rectangle(x,y,84,60,ok?C.bl:0xcccccc).setStrokeStyle(3,C.mar);if(ok)e.setInteractive().on('pointerup',()=>s.leer(i));o.add([e,T(s,x,y,ok?'✉':'?',30)])}
+o.add(btn(s,360,1180,260,70,'Cerrar',()=>o.destroy(),C.rosa))}
+leer(i){const s=this,c=CL[i],o=s.add.container(0,0).setDepth(110);
+o.add([s.add.rectangle(360,640,720,1280,0x000000,.5).setInteractive(),s.add.rectangle(360,640,620,760,C.mant).setStrokeStyle(8,C.mar),T(s,360,330,'Carta de '+c[0],36),T(s,360,640,c[4].split('/').join('\n'),28,'#5a2d0c',{align:'center',wordWrap:{width:540},lineSpacing:14,fontStyle:'italic'}),T(s,360,930,'— '+c[0]+', 11:11',28)]);
+o.add(btn(s,360,1030,220,64,'Cerrar',()=>o.destroy(),C.rosa))}}
+// ================= ARRANQUE Y PWA =================
+const SVG='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="96" fill="#FDE0E6"/><path d="M120 220h240v90a100 100 0 0 1-100 100h-40a100 100 0 0 1-100-100z" fill="#8B4513"/><path d="M360 240h30a45 45 0 0 1 0 90h-34" fill="none" stroke="#8B4513" stroke-width="24"/><path d="M200 190q-20-30 0-60M260 190q-20-30 0-60" stroke="#89CFF0" stroke-width="14" fill="none" stroke-linecap="round"/><text x="240" y="345" font-size="58" text-anchor="middle" fill="#FDE0E6" font-family="Georgia">11:11</text></svg>';
+document.getElementById('ic').href='data:image/svg+xml;base64,'+btoa(SVG);
+if('serviceWorker' in navigator&&location.protocol.indexOf('http')==0)navigator.serviceWorker.register('sw.js').catch(()=>{});
+new Phaser.Game({type:Phaser.AUTO,parent:'g',width:720,height:1280,backgroundColor:'#FDE0E6',scale:{mode:Phaser.Scale.FIT,autoCenter:Phaser.Scale.CENTER_BOTH},scene:[Jardin,Cafe]});
+</script></body></html>
